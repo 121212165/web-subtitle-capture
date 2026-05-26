@@ -3,3 +3,4 @@ dist/
 *.crx
 *.pem
 .DS_Store
+server/.subtitle-token
