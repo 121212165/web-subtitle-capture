@@ -6,7 +6,7 @@ const SERVER = "http://localhost:3210";
 // Clean up session when tab is closed
 chrome.tabs.onRemoved.addListener((tabId) => {
   // The content script handles its own cleanup via beforeunload
-  console.log(`[background] Tab ${tabId} closed`);
+  console.debug(`[background] Tab ${tabId} closed`);
 });
 
 // Handle messages from popup
@@ -15,7 +15,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     fetch(`${SERVER}/api/sessions`)
       .then((res) => res.json())
       .then((data) => sendResponse(data))
-      .catch(() => sendResponse({ sessions: [] }));
+      .catch((err) => {
+        console.debug("[background] getSessions failed:", err);
+        sendResponse({ sessions: [] });
+      });
     return true;
   }
 
@@ -23,7 +26,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     fetch(`${SERVER}/api/health`)
       .then((res) => res.json())
       .then((data) => sendResponse({ ok: true, ...data }))
-      .catch(() => sendResponse({ ok: false }));
+      .catch((err) => {
+        console.debug("[background] health check failed:", err);
+        sendResponse({ ok: false });
+      });
     return true;
   }
 
@@ -32,7 +38,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     chrome.tabs.query({}, (tabs) => {
       for (const tab of tabs) {
         if (tab.url && !tab.url.startsWith("chrome://")) {
-          chrome.tabs.sendMessage(tab.id, { action: "start" }).catch(() => {});
+          chrome.tabs.sendMessage(tab.id, { action: "start" }).catch(
+            (err) => console.debug("[background] captureAll: failed for tab", tab.id, err)
+          );
         }
       }
     });
@@ -44,7 +52,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     chrome.tabs.query({}, (tabs) => {
       for (const tab of tabs) {
         if (tab.url && !tab.url.startsWith("chrome://")) {
-          chrome.tabs.sendMessage(tab.id, { action: "stop" }).catch(() => {});
+          chrome.tabs.sendMessage(tab.id, { action: "stop" }).catch(
+            (err) => console.debug("[background] stopAll: failed for tab", tab.id, err)
+          );
         }
       }
     });

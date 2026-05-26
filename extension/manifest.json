@@ -10,8 +10,24 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "*://*.feishu.com/*",
+        "*://*.larksuite.com/*",
+        "*://*.xiaoe-tech.com/*",
+        "*://*.xege.com/*",
+        "*://*.youtube.com/*",
+        "*://*.bilibili.com/*",
+        "*://*.v.qq.com/*",
+        "*://*.youku.com/*",
+        "*://*.iqiyi.com/*",
+        "*://*.zhihu.com/*",
+        "*://*.ixigua.com/*",
+        "*://*.douyin.com/*",
+        "*://*.huya.com/*",
+        "*://*.douyu.com/*",
+        "*://*.twitch.tv/*"
+      ],
+      "js": ["platform.js", "content.js"],
       "run_at": "document_idle"
     }
   ],
