@@ -242,6 +242,7 @@
         platform: detectPlatform(window.location.hostname),
         url: window.location.href,
         title: document.title,
+        mode: "dom",
       });
       return;
     }

@@ -153,3 +153,74 @@ h1 {
   font-size: 11px;
   color: #adb5bd;
 }
+
+.mode-selector {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mode-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.mode-option input {
+  display: none;
+}
+
+.mode-option:has(input:checked) {
+  background: #e7f5ff;
+  border-color: #1971c2;
+  color: #1971c2;
+}
+
+.settings-toggle {
+  text-align: right;
+  font-size: 11px;
+  color: #868e96;
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+
+.settings-toggle:hover {
+  color: #495057;
+}
+
+.settings {
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.setting-row {
+  margin-bottom: 8px;
+}
+
+.setting-row label {
+  display: block;
+  font-size: 11px;
+  color: #868e96;
+  margin-bottom: 3px;
+}
+
+.setting-row input,
+.setting-row select {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+}
