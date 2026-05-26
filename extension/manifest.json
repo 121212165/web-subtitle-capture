@@ -3,7 +3,7 @@
   "name": "Web Subtitle Capture",
   "version": "1.0.0",
   "description": "Capture video subtitles from web pages and save to Obsidian",
-  "permissions": ["activeTab", "tabs", "storage"],
+  "permissions": ["activeTab", "tabs", "storage", "tabCapture", "offscreen"],
   "host_permissions": ["http://localhost:3210/*"],
   "background": {
     "service_worker": "background.js"
@@ -43,5 +43,6 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "offscreen": {}
 }
