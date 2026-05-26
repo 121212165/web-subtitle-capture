@@ -15,13 +15,7 @@
     return `tab-${Math.abs(hash).toString(36)}`;
   }
 
-  // Platform detection
-  function detectPlatform() {
-    const host = window.location.hostname;
-    if (host.includes("feishu") || host.includes("larksuite")) return "feishu";
-    if (host.includes("xiaoe-tech") || host.includes("xege")) return "xiaoe";
-    return "generic";
-  }
+  // detectPlatform is provided by platform.js (shared with popup.js)
 
   // Subtitle selectors by platform
   const SELECTORS = {
@@ -77,7 +71,9 @@
             return text && text.length > 0 && text.length < 2000;
           });
         }
-      } catch {}
+      } catch (err) {
+        console.debug("[SubtitleCapture] Selector error:", selector, err);
+      }
     }
     return [];
   }
@@ -102,6 +98,7 @@
     for (let i = 0; i < video.textTracks.length; i++) {
       const track = video.textTracks[i];
       if (track.mode === "showing") {
+        if (!track.cues) continue;
         for (let j = 0; j < track.cues.length; j++) {
           const cue = track.cues[j];
           if (video.currentTime >= cue.startTime && video.currentTime <= cue.endTime) {
@@ -126,7 +123,7 @@
           sessionId,
           text,
           tabTitle: document.title,
-          platform: detectPlatform(),
+          platform: detectPlatform(window.location.hostname),
         }),
       });
     } catch (err) {
@@ -150,13 +147,13 @@
 
     const serverOk = await checkServer();
     if (!serverOk) {
-      console.log("[SubtitleCapture] Server not running. Start the local server first.");
+      console.debug("[SubtitleCapture] Server not running. Start the local server first.");
       return;
     }
 
     sessionId = generateSessionId();
-    const platform = detectPlatform();
-    console.log(`[SubtitleCapture] Started (${platform}) session: ${sessionId}`);
+    const platform = detectPlatform(window.location.hostname);
+    console.debug(`[SubtitleCapture] Started (${platform}) session: ${sessionId}`);
 
     // Register session with server
     try {
@@ -169,7 +166,15 @@
           platform,
         }),
       });
-    } catch {}
+    } catch (err) {
+      console.debug("[SubtitleCapture] Session registration failed:", err);
+    }
+
+    // Clear any existing poll interval before creating a new one
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
 
     // Method 1: MutationObserver on subtitle elements
     const targetNode = document.body;
@@ -209,12 +214,14 @@
     }
 
     if (sessionId) {
-      fetch(`${SERVER}/api/session/${sessionId}`, { method: "DELETE" }).catch(() => {});
+      fetch(`${SERVER}/api/session/${sessionId}`, { method: "DELETE" }).catch(
+        (err) => console.debug("[SubtitleCapture] Session cleanup failed:", err)
+      );
       sessionId = null;
     }
 
     lastText = "";
-    console.log("[SubtitleCapture] Stopped");
+    console.debug("[SubtitleCapture] Stopped");
   }
 
   // Listen for messages from popup/background
@@ -232,7 +239,7 @@
       sendResponse({
         running: !!observer,
         sessionId,
-        platform: detectPlatform(),
+        platform: detectPlatform(window.location.hostname),
         url: window.location.href,
         title: document.title,
       });
@@ -242,9 +249,9 @@
 
   // Auto-start: try to detect subtitles on page load
   setTimeout(async () => {
-    const elements = findSubtitleElements(detectPlatform());
+    const elements = findSubtitleElements(detectPlatform(window.location.hostname));
     if (elements.length > 0) {
-      console.log("[SubtitleCapture] Subtitles detected, auto-starting capture...");
+      console.debug("[SubtitleCapture] Subtitles detected, auto-starting capture...");
       await startCapture();
     }
   }, 2000);

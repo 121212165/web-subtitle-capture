@@ -1,12 +1,14 @@
 import fs from "fs";
 import path from "path";
 
-const VAULT_PATH = process.env.OBSIDIAN_VAULT ?? "C:\\Users\\lenovo\\Documents\\Obsidian\\explorer";
+// Users must set OBSIDIAN_VAULT to their actual vault path.
+// Example: OBSIDIAN_VAULT="/Users/me/MyVault" or OBSIDIAN_VAULT="D:\Notes\MyVault"
+const VAULT_PATH = process.env.OBSIDIAN_VAULT ?? path.join(process.env.HOME ?? process.env.USERPROFILE ?? ".", "obsidian-vault");
 const NOTES_DIR = process.env.NOTES_DIR ?? "notes";
 
 function sanitizeFilename(title: string): string {
   return title
-    .replace(/[<>:"/\\|?*]/g, "")
+    .replace(/[<>:"/\|?*]/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .substring(0, 30) || "untitled";
