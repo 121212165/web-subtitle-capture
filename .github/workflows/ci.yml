@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  server:
+    name: Server
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: server
+      - name: TypeScript check
+        run: npx tsc --noEmit
+        working-directory: server
+
+  extension:
+    name: Extension Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate manifest.json
+        run: |
+          node -e "
+          const m = require('./extension/manifest.json');
+          const required = ['manifest_version', 'name', 'version'];
+          for (const key of required) {
+            if (!m[key]) { console.error('Missing: ' + key); process.exit(1); }
+          }
+          if (m.manifest_version !== 3) { console.error('Must be Manifest V3'); process.exit(1); }
+          console.log('manifest.json valid');
+          "
+      - name: Check content script syntax
+        run: node --check extension/content.js
+      - name: Check background script syntax
+        run: node --check extension/background.js
+      - name: Check popup script syntax
+        run: node --check extension/popup.js
