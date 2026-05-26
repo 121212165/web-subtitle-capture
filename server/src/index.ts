@@ -60,6 +60,10 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 }
 
 function checkAuth(req: http.IncomingMessage): boolean {
+  // Chrome extension requests are already validated by origin check
+  const origin = req.headers["origin"];
+  if (origin && isValidOrigin(origin)) return true;
+  // Non-extension requests require the shared-secret token
   const token = req.headers["x-auth-token"];
   return token === AUTH_TOKEN;
 }
@@ -91,15 +95,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // All other endpoints require auth
-  if (!checkAuth(req)) {
-    sendJson(res, { error: "Unauthorized" }, 401, origin);
-    return;
-  }
-
   // All other endpoints require valid origin
   if (!isValidOrigin(origin)) {
     sendJson(res, { error: "Forbidden" }, 403, origin);
+    return;
+  }
+
+  // Auth: chrome-extension origins pass via CORS; other clients need token
+  if (!checkAuth(req)) {
+    sendJson(res, { error: "Unauthorized" }, 401, origin);
     return;
   }
 
