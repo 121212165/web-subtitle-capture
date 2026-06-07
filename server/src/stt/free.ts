@@ -20,7 +20,8 @@ export class FreeSTTService implements STTService {
   private url: string;
 
   constructor() {
-    this.url = process.env.FREE_STT_URL || "http://localhost:10095";
+    this.url = process.env.FREE_STT_URL || "http://localhost:9000/v1/audio/transcriptions";
+    console.log(`[free-stt] Backend URL: ${this.url}`);
   }
 
   async transcribe(audioBuffer: Buffer, mimeType: string): Promise<string> {
