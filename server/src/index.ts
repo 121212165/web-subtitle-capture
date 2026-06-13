@@ -1,30 +1,9 @@
 import http from "http";
-import crypto from "crypto";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { SessionManager } from "./sessions.js";
-import { createSTTService } from "./stt/index.js";
 
 const PORT = 3210;
 const MAX_BODY_SIZE = 1024 * 1024; // 1 MB
 const manager = new SessionManager();
-const sttService = createSTTService();
-
-// Generate auth token on startup
-const AUTH_TOKEN = crypto.randomBytes(32).toString("hex");
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TOKEN_FILE = path.join(__dirname, "..", ".subtitle-token");
-
-try {
-  fs.writeFileSync(TOKEN_FILE, AUTH_TOKEN, "utf-8");
-} catch (err) {
-  console.error("[server] Could not write token file:", err);
-}
-
-console.log(`[server] Auth token: ${AUTH_TOKEN}`);
-console.log(`[server] Token file: ${TOKEN_FILE}`);
-console.log(`[server] STT provider: ${process.env.STT_PROVIDER || "mock"}`);
 
 function isValidOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
@@ -35,7 +14,7 @@ function sendJson(res: http.ServerResponse, data: unknown, status = 200, origin?
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Auth-Token",
+    "Access-Control-Allow-Headers": "Content-Type",
   };
   if (origin && isValidOrigin(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
@@ -62,33 +41,6 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
-function readBodyBuffer(req: http.IncomingMessage): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on("error", reject);
-    req.on("data", (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > MAX_BODY_SIZE) {
-        req.destroy();
-        reject(new Error("Request body too large"));
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-  });
-}
-
-function checkAuth(req: http.IncomingMessage): boolean {
-  // Chrome extension requests are already validated by origin check
-  const origin = req.headers["origin"];
-  if (origin && isValidOrigin(origin)) return true;
-  // Non-extension requests require the shared-secret token
-  const token = req.headers["x-auth-token"];
-  return token === AUTH_TOKEN;
-}
-
 const server = http.createServer(async (req, res) => {
   const origin = req.headers["origin"];
 
@@ -102,7 +54,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": origin!,
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Auth-Token",
+      "Access-Control-Allow-Headers": "Content-Type",
     });
     res.end();
     return;
@@ -119,40 +71,6 @@ const server = http.createServer(async (req, res) => {
   // All other endpoints require valid origin
   if (!isValidOrigin(origin)) {
     sendJson(res, { error: "Forbidden" }, 403, origin);
-    return;
-  }
-
-  // Auth: chrome-extension origins pass via CORS; other clients need token
-  if (!checkAuth(req)) {
-    sendJson(res, { error: "Unauthorized" }, 401, origin);
-    return;
-  }
-
-  // POST /api/transcribe — receive audio and return transcription
-  if (req.method === "POST" && url.pathname === "/api/transcribe") {
-    try {
-      const sessionId = req.headers["x-session-id"] as string | undefined;
-      const tabTitle = req.headers["x-tab-title"] as string | undefined;
-
-      if (!sessionId) {
-        sendJson(res, { error: "x-session-id header required" }, 400, origin);
-        return;
-      }
-
-      const bodyBuffer = await readBodyBuffer(req);
-      const mimeType = req.headers["content-type"] || "audio/webm";
-
-      const text = await sttService.transcribe(bodyBuffer, mimeType);
-
-      if (text) {
-        manager.addSubtitle(sessionId, text, tabTitle ?? "untitled", "audio");
-      }
-
-      sendJson(res, { ok: true, text }, 200, origin);
-    } catch (e) {
-      console.error("[server] POST /api/transcribe error:", e);
-      sendJson(res, { error: "Transcription failed" }, 500, origin);
-    }
     return;
   }
 
@@ -212,10 +130,5 @@ server.listen(PORT, () => {
 
 process.on("SIGINT", () => {
   manager.stopAll();
-  try {
-    fs.unlinkSync(TOKEN_FILE);
-  } catch {
-    // Token file cleanup is best-effort
-  }
   process.exit(0);
 });
