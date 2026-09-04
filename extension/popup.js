@@ -61,20 +61,28 @@ async function refreshStatus() {
   try {
     const data = await chrome.runtime.sendMessage({ action: "getSessions" });
     if (data.sessions && data.sessions.length > 0) {
-      sessionsDiv.innerHTML = data.sessions
-        .map(
-          (s) => `
-        <div class="session">
-          <span class="title">${s.tabTitle}</span>
-          <span class="count">${s.lineCount} 条</span>
-        </div>`
-        )
-        .join("");
+      sessionsDiv.innerHTML = "";
+      for (const s of data.sessions) {
+        const div = document.createElement("div");
+        div.className = "session";
+
+        const titleSpan = document.createElement("span");
+        titleSpan.className = "title";
+        titleSpan.textContent = s.tabTitle || "untitled";
+
+        const countSpan = document.createElement("span");
+        countSpan.className = "count";
+        countSpan.textContent = s.lineCount + " 条";
+
+        div.appendChild(titleSpan);
+        div.appendChild(countSpan);
+        sessionsDiv.appendChild(div);
+      }
     } else {
-      sessionsDiv.innerHTML = '<div class="empty">暂无活跃会话</div>';
+      sessionsDiv.textContent = "暂无活跃会话";
     }
   } catch {
-    sessionsDiv.innerHTML = '<div class="empty">服务器未连接</div>';
+    sessionsDiv.textContent = "服务器未连接";
   }
 }
 

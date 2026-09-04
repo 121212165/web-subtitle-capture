@@ -3,3 +3,26 @@ dist/
 *.crx
 *.pem
 .DS_Store
+
+# Dependencies
+pnpm-lock.yaml
+
+# Build output
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+
+# Logs
+*.log
+
+# Coverage
+coverage/

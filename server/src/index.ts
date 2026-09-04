@@ -1,100 +1,198 @@
-import http from "http";
+import { config as loadEnv } from "dotenv";
+import path from "path";
+loadEnv({ path: path.resolve(import.meta.dirname, "../../.env") });
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { serve } from "@hono/node-server";
 import { SessionManager } from "./sessions.js";
+import { loadConfig, getConfig } from "./config.js";
+import { log } from "./logger.js";
+import { loadMimoConfig, transcribeAudio, checkMimoHealth } from "./mimo-asr.js";
+import crypto from "crypto";
 
-const PORT = 3210;
+const config = loadConfig();
 const manager = new SessionManager();
+const mimoConfig = loadMimoConfig();
+const AUTH_TOKEN = process.env.AUTH_TOKEN || crypto.randomBytes(32).toString("hex");
 
-function sendJson(res: http.ServerResponse, data: unknown, status = 200) {
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  });
-  res.end(JSON.stringify(data));
-}
+const app = new Hono();
 
-function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve) => {
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => resolve(body));
-  });
-}
-
-const server = http.createServer(async (req, res) => {
-  // CORS preflight
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    });
-    res.end();
-    return;
-  }
-
-  const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
-
-  // POST /api/subtitle — receive subtitle text
-  if (req.method === "POST" && url.pathname === "/api/subtitle") {
-    try {
-      const body = JSON.parse(await readBody(req));
-      const { sessionId, text, tabTitle, platform } = body;
-      if (!sessionId || !text) {
-        sendJson(res, { error: "sessionId and text required" }, 400);
-        return;
-      }
-      manager.addSubtitle(sessionId, text, tabTitle ?? "untitled", platform ?? "unknown");
-      sendJson(res, { ok: true });
-    } catch (e) {
-      sendJson(res, { error: String(e) }, 500);
+// CORS middleware
+app.use("/*", cors({
+  origin: (origin) => {
+    if (origin.startsWith("chrome-extension://") || origin === `http://localhost:${config.port}`) {
+      return origin;
     }
-    return;
-  }
+    return "null";
+  },
+  allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+  allowHeaders: ["Content-Type", "X-Auth-Token"],
+}));
 
-  // POST /api/session — create/get session
-  if (req.method === "POST" && url.pathname === "/api/session") {
-    try {
-      const body = JSON.parse(await readBody(req));
-      const { sessionId, tabTitle, platform } = body;
-      manager.getOrCreate(sessionId, tabTitle ?? "untitled", platform ?? "unknown");
-      sendJson(res, { ok: true });
-    } catch (e) {
-      sendJson(res, { error: String(e) }, 500);
-    }
-    return;
-  }
-
-  // DELETE /api/session/:id — stop session
-  if (req.method === "DELETE" && url.pathname.startsWith("/api/session/")) {
-    const id = url.pathname.split("/").pop()!;
-    manager.stopSession(id);
-    sendJson(res, { ok: true });
-    return;
-  }
-
-  // GET /api/sessions — list active sessions
-  if (req.method === "GET" && url.pathname === "/api/sessions") {
-    sendJson(res, { sessions: manager.listSessions() });
-    return;
-  }
-
-  // GET /api/health — health check
-  if (req.method === "GET" && url.pathname === "/api/health") {
-    sendJson(res, { status: "ok", uptime: process.uptime() });
-    return;
-  }
-
-  sendJson(res, { error: "not found" }, 404);
+// Security headers middleware
+app.use("/*", async (c, next) => {
+  await next();
+  c.res.headers.set("X-Content-Type-Options", "nosniff");
+  c.res.headers.set("X-Frame-Options", "DENY");
+  c.res.headers.set("Cache-Control", "no-store");
 });
 
-server.listen(PORT, () => {
-  console.log(`[server] Web Subtitle Capture server running on http://localhost:${PORT}`);
-  console.log(`[server] Waiting for extension connections...`);
+// Body size limit middleware
+const MAX_BODY_SIZE = 1024 * 1024; // 1MB
+app.use("/api/*", async (c, next) => {
+  const contentLength = c.req.header("content-length");
+  if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
+    return c.json({ success: false, error: "Request body too large" }, 413);
+  }
+  await next();
 });
 
-process.on("SIGINT", () => {
-  manager.stopAll();
+// Request logging middleware
+app.use("/*", async (c, next) => {
+  const start = Date.now();
+  await next();
+  const duration = Date.now() - start;
+  log.request(c.req.method, c.req.path, c.res.status, duration);
+});
+
+// Auth middleware for API routes — local-only server, skip auth for local requests
+app.use("/api/*", async (c, next) => {
+  const origin = c.req.header("origin") ?? "";
+  const referer = c.req.header("referer") ?? "";
+
+  // Allow: chrome-extension, localhost, or no origin (service worker / curl)
+  const isLocal = !origin
+    || origin.startsWith("chrome-extension://")
+    || origin.startsWith("http://localhost")
+    || origin.startsWith("http://127.0.0.1")
+    || referer.includes("localhost")
+    || referer.startsWith("chrome-extension://");
+
+  if (isLocal) {
+    await next();
+    return;
+  }
+
+  const auth = c.req.header("X-Auth-Token");
+  if (auth !== AUTH_TOKEN) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+  await next();
+});
+
+// POST /api/subtitle — receive subtitle text
+app.post("/api/subtitle", async (c) => {
+  const contentType = c.req.header("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    return c.json({ success: false, error: "Content-Type must be application/json" }, 415);
+  }
+  try {
+    const body = await c.req.json();
+    const { sessionId, text, tabTitle, platform } = body;
+    if (!sessionId || !text) {
+      return c.json({ success: false, error: "sessionId and text required" }, 400);
+    }
+    if (typeof text !== "string" || text.length > 100000) {
+      return c.json({ success: false, error: "text too large" }, 400);
+    }
+    await manager.addSubtitle(sessionId, text, tabTitle ?? "untitled", platform ?? "unknown");
+    return c.json({ success: true });
+  } catch (e) {
+    log.error("subtitle error", { error: String(e) });
+    return c.json({ success: false, error: "Internal server error" }, 500);
+  }
+});
+
+// POST /api/session — create session
+app.post("/api/session", async (c) => {
+  const contentType = c.req.header("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    return c.json({ success: false, error: "Content-Type must be application/json" }, 415);
+  }
+  try {
+    const body = await c.req.json();
+    const { sessionId, tabTitle, platform } = body;
+    const sid = sessionId || crypto.randomUUID();
+    await manager.getOrCreate(sid, tabTitle ?? "untitled", platform ?? "unknown");
+    return c.json({ success: true, sessionId: sid });
+  } catch (e) {
+    log.error("session create error", { error: String(e) });
+    if (String(e).includes("Maximum session")) {
+      return c.json({ success: false, error: "Maximum session limit reached" }, 429);
+    }
+    return c.json({ success: false, error: "Internal server error" }, 500);
+  }
+});
+
+// DELETE /api/session/:id — stop session
+app.delete("/api/session/:id", async (c) => {
+  const id = c.req.param("id");
+  await manager.stopSession(id);
+  return c.json({ success: true });
+});
+
+// GET /api/sessions — list active sessions
+app.get("/api/sessions", (c) => {
+  return c.json({ success: true, sessions: manager.listSessions() });
+});
+
+// POST /api/asr — transcribe audio via MiMo ASR
+app.post("/api/asr", async (c) => {
+  if (!mimoConfig) {
+    return c.json({ success: false, error: "MiMo ASR not configured (set MIMO_API_KEY)" }, 503);
+  }
+  const contentType = c.req.header("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    return c.json({ success: false, error: "Content-Type must be application/json" }, 415);
+  }
+  try {
+    const body = await c.req.json();
+    const { audio, format, sessionId, tabTitle, platform } = body;
+    if (!audio) {
+      return c.json({ success: false, error: "audio (base64) required" }, 400);
+    }
+    if (typeof audio !== "string" || audio.length > 10 * 1024 * 1024) {
+      return c.json({ success: false, error: "audio data too large (max 10MB base64)" }, 400);
+    }
+
+    const result = await transcribeAudio(audio, format ?? "wav");
+    if (result.text && sessionId) {
+      await manager.addSubtitle(sessionId, result.text, tabTitle ?? "ASR", platform ?? "xiaomi");
+    }
+
+    return c.json({ success: true, text: result.text });
+  } catch (e) {
+    log.error("asr error", { error: String(e) });
+    return c.json({ success: false, error: "Internal server error" }, 500);
+  }
+});
+
+// GET /api/health — health check
+app.get("/api/health", async (c) => {
+  const mimoOk = mimoConfig ? await checkMimoHealth() : false;
+  return c.json({
+    success: true,
+    status: "ok",
+    uptime: process.uptime(),
+    activeSessions: manager.listSessions().length,
+    vaultPath: config.vaultPath,
+    authRequired: true,
+    asrEnabled: !!mimoConfig,
+    asrHealthy: mimoOk,
+  });
+});
+
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  log.info("Shutting down...");
+  await manager.stopAll();
   process.exit(0);
 });
+
+serve({ fetch: app.fetch, port: config.port }, () => {
+  log.info(`Server running on http://localhost:${config.port}`);
+  log.info(`Auth token: ${AUTH_TOKEN}`);
+  log.info("Waiting for extension connections...");
+});
+
+export { app, manager };

@@ -1,4 +1,6 @@
 import { ObsidianWriter } from "./writer.js";
+import { getConfig } from "./config.js";
+import { log } from "./logger.js";
 
 interface Session {
   id: string;
@@ -12,11 +14,35 @@ interface Session {
 
 export class SessionManager {
   private sessions = new Map<string, Session>();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
-  getOrCreate(sessionId: string, tabTitle: string, platform: string): Session {
+  constructor() {
+    this.startCleanup();
+  }
+
+  private startCleanup(): void {
+    const { sessionTimeoutMs } = getConfig();
+    this.cleanupTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [id, session] of this.sessions) {
+        if (now - session.lastActivity.getTime() > sessionTimeoutMs) {
+          log.info("Session timed out", { sessionId: id, lineCount: session.lineCount });
+          session.writer.close().catch(() => {});
+          this.sessions.delete(id);
+        }
+      }
+    }, 60_000);
+  }
+
+  async getOrCreate(sessionId: string, tabTitle: string, platform: string): Promise<Session> {
     let session = this.sessions.get(sessionId);
     if (!session) {
+      const { maxSessions } = getConfig();
+      if (this.sessions.size >= maxSessions) {
+        throw new Error("Maximum session limit reached");
+      }
       const writer = new ObsidianWriter(tabTitle);
+      await writer.beginSession();
       session = {
         id: sessionId,
         tabTitle,
@@ -27,28 +53,26 @@ export class SessionManager {
         lastActivity: new Date(),
       };
       this.sessions.set(sessionId, session);
-      writer.beginSession();
-      console.log(`[session] New: ${sessionId} (${platform}) "${tabTitle}"`);
-      console.log(`[session]   → ${writer.getFilePath()}`);
+      log.info("New session", { sessionId, platform, tabTitle });
     }
     return session;
   }
 
-  addSubtitle(sessionId: string, text: string, tabTitle: string, platform: string): void {
-    const session = this.getOrCreate(sessionId, tabTitle, platform);
+  async addSubtitle(sessionId: string, text: string, tabTitle: string, platform: string): Promise<void> {
+    const session = await this.getOrCreate(sessionId, tabTitle, platform);
     const lines = text.split("\n").filter((l) => l.trim().length > 0);
     if (lines.length > 0) {
-      session.writer.writeLines(lines);
+      await session.writer.writeLines(lines);
       session.lineCount += lines.length;
       session.lastActivity = new Date();
-      process.stdout.write(`[session] ${sessionId}: +${lines.length} (total ${session.lineCount})\r`);
     }
   }
 
-  stopSession(sessionId: string): void {
+  async stopSession(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session) {
-      console.log(`\n[session] Stopped: ${sessionId} (${session.lineCount} lines)`);
+      await session.writer.close();
+      log.info("Session stopped", { sessionId, lineCount: session.lineCount });
       this.sessions.delete(sessionId);
     }
   }
@@ -63,10 +87,15 @@ export class SessionManager {
     }));
   }
 
-  stopAll(): void {
+  async stopAll(): Promise<void> {
     for (const [id, session] of this.sessions) {
-      console.log(`\n[session] Stopping: ${id} (${session.lineCount} lines)`);
+      await session.writer.close();
+      log.info("Stopping session", { sessionId: id, lineCount: session.lineCount });
     }
     this.sessions.clear();
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
   }
 }

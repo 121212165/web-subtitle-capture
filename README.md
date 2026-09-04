@@ -319,6 +319,120 @@ web-subtitle-capture/
 └── README.md
 ```
 
+## Development
+
+### Prerequisites
+
+- **Node.js** 18+
+- **pnpm** 9+ (`npm install -g pnpm`)
+
+### Setup
+
+```bash
+git clone https://github.com/YOUR_USERNAME/web-subtitle-capture.git
+cd web-subtitle-capture
+pnpm install
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `pnpm dev` | Start server + watch extension build |
+| `pnpm build` | Build extension |
+| `pnpm test` | Run all tests |
+| `pnpm lint` | Lint all files |
+| `pnpm typecheck` | Type check all packages |
+| `pnpm format` | Format code with Prettier |
+
+### Environment Variables
+
+Create a `.env` file in the project root (see `.env.example`):
+
+```bash
+OBSIDIAN_VAULT=/path/to/your/obsidian/vault
+PORT=3210
+```
+
+### Project Structure
+
+```
+web-subtitle-capture/
+├── extension/          # Chrome extension (TypeScript, esbuild)
+│   └── src/
+│       ├── shared/     # Types, constants, platform detection
+│       ├── content/    # Content script
+│       ├── background/ # Service worker
+│       └── popup/      # Popup UI
+├── server/             # Node.js server (TypeScript, Hono)
+│   └── src/
+│       ├── config.ts   # Configuration
+│       ├── logger.ts   # Structured logging
+│       ├── index.ts    # Hono routes
+│       ├── sessions.ts # Session management
+│       └── writer.ts   # Obsidian writer
+└── .github/workflows/  # CI/CD
+```
+
+---
+
+## 开发
+
+### 前置条件
+
+- **Node.js** 18+
+- **pnpm** 9+（`npm install -g pnpm`）
+
+### 安装
+
+```bash
+git clone https://github.com/YOUR_USERNAME/web-subtitle-capture.git
+cd web-subtitle-capture
+pnpm install
+```
+
+### 命令
+
+| 命令 | 说明 |
+|------|------|
+| `pnpm dev` | 启动服务器 + 监听扩展构建 |
+| `pnpm build` | 构建扩展 |
+| `pnpm test` | 运行所有测试 |
+| `pnpm lint` | 检查所有文件 |
+| `pnpm typecheck` | 类型检查所有包 |
+| `pnpm format` | 用 Prettier 格式化代码 |
+
+### 环境变量
+
+在项目根目录创建 `.env` 文件（参见 `.env.example`）：
+
+```bash
+OBSIDIAN_VAULT=/path/to/your/obsidian/vault
+PORT=3210
+```
+
+### 项目结构
+
+```
+web-subtitle-capture/
+├── extension/          # Chrome 扩展（TypeScript, esbuild）
+│   └── src/
+│       ├── shared/     # 类型、常量、平台检测
+│       ├── content/    # Content script
+│       ├── background/ # Service worker
+│       └── popup/      # 弹窗 UI
+├── server/             # Node.js 服务器（TypeScript, Hono）
+│   └── src/
+│       ├── config.ts   # 配置管理
+│       ├── logger.ts   # 结构化日志
+│       ├── index.ts    # Hono 路由
+│       ├── sessions.ts # 会话管理
+│       └── writer.ts   # Obsidian 写入器
+└── .github/workflows/  # CI/CD
+```
+
+---
+
 ## Contributing
 
 1. Fork this repository

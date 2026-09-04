@@ -1,0 +1,14 @@
+export const SERVER_URL = "http://localhost:3210";
+export const POLL_INTERVAL_ACTIVE = 500;
+export const POLL_INTERVAL_IDLE = 2000;
+export const IDLE_THRESHOLD = 10;
+export const DEBOUNCE_MS = 100;
+export const DEDUP_MIN_INTERVAL_MS = 500;
+export const DEDUP_REPEAT_WINDOW_MS = 3000;
+export const DEDUP_SHORT_TEXT_LENGTH = 10;
+export const DEDUP_SLIDING_WINDOW_SIZE = 5;
+export const MAX_PREVIEW_LINES = 50;
+export const REFRESH_INTERVAL_MS = 10000;
+export const ENABLE_API_CAPTURE = true;
+export const API_INTERCEPT_MAX_BUFFER = 200;
+export const API_IDLE_TIMEOUT_MS = 60_000;

@@ -1,16 +1,33 @@
 {
   "manifest_version": 3,
   "name": "Web Subtitle Capture",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Capture video subtitles from web pages and save to Obsidian",
-  "permissions": ["activeTab", "tabs", "storage"],
+  "permissions": ["activeTab", "storage", "offscreen", "tabs"],
+  "optional_permissions": ["tabCapture"],
   "host_permissions": ["http://localhost:3210/*"],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "https://*.feishu.cn/*",
+        "https://*.larksuite.com/*",
+        "https://*.xiaoe-tech.com/*",
+        "https://*.xege.com/*",
+        "https://www.youtube.com/*",
+        "https://*.youtube.com/*",
+        "https://www.bilibili.com/*",
+        "https://*.bilibili.com/*",
+        "https://*.microsoftstream.com/*",
+        "https://web.microsoftteams.com/*",
+        "https://teams.microsoft.com/*",
+        "https://*.mi.com/*",
+        "https://*.xiaomi.com/*",
+        "https://*.miui.com/*",
+        "https://*.duokan.com/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
@@ -27,5 +44,8 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
   }
 }

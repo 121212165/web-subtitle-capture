@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <h1>Web Subtitle Capture</h1>
+    <div id="server-status" class="status disconnected">未连接</div>
+  </div>
+
+  <div class="controls">
+    <button id="btn-start" class="btn primary">开始捕获当前页</button>
+    <button id="btn-stop" class="btn danger" style="display:none">停止捕获</button>
+  </div>
+
+  <div class="controls">
+    <button id="btn-start-all" class="btn secondary">全部开始</button>
+    <button id="btn-stop-all" class="btn secondary">全部停止</button>
+  </div>
+
+  <div id="current-info" class="info" style="display:none">
+    <div class="label">当前页面</div>
+    <div id="current-title" class="value"></div>
+    <div id="current-platform" class="tag"></div>
+  </div>
+
+  <div class="section">
+    <h2>活跃会话</h2>
+    <div id="sessions" class="sessions">
+      <div class="empty">暂无活跃会话</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Obsidian: notes/</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

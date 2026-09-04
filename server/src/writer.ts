@@ -1,15 +1,24 @@
 import fs from "fs";
 import path from "path";
+import { getConfig } from "./config.js";
+import { log } from "./logger.js";
 
-const VAULT_PATH = process.env.OBSIDIAN_VAULT ?? "C:\\Users\\lenovo\\Documents\\Obsidian\\explorer";
-const NOTES_DIR = process.env.NOTES_DIR ?? "notes";
-
-function sanitizeFilename(title: string): string {
-  return title
-    .replace(/[<>:"/\\|?*]/g, "")
+export function sanitizeFilename(title: string): string {
+  const safeTitle = title
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
+    .replace(/\.{2,}/g, ".")
     .replace(/\s+/g, " ")
     .trim()
     .substring(0, 30) || "untitled";
+
+  const { vaultPath, notesDir } = getConfig();
+  const resolved = path.resolve(vaultPath, notesDir, safeTitle + ".md");
+  const dirResolved = path.resolve(vaultPath, notesDir);
+  if (!resolved.startsWith(dirResolved + path.sep) && resolved !== dirResolved) {
+    throw new Error("Invalid filename: path traversal detected");
+  }
+
+  return safeTitle;
 }
 
 function formatDate(d: Date): string {
@@ -33,35 +42,56 @@ function formatDisplayDate(d: Date): string {
 export class ObsidianWriter {
   private filePath: string;
   private fileExists = false;
-  private prevText = "";
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(tabTitle: string) {
-    const dir = path.join(VAULT_PATH, NOTES_DIR);
-    fs.mkdirSync(dir, { recursive: true });
+    const { vaultPath, notesDir } = getConfig();
+    const dir = path.join(vaultPath, notesDir);
     const safeTitle = sanitizeFilename(tabTitle);
     const date = formatDate(new Date());
     this.filePath = path.join(dir, `${safeTitle}-${date}.md`);
-    this.fileExists = fs.existsSync(this.filePath);
   }
 
-  beginSession(): void {
+  async init(): Promise<void> {
+    const { vaultPath, notesDir } = getConfig();
+    const dir = path.join(vaultPath, notesDir);
+    await fs.promises.mkdir(dir, { recursive: true });
+    try {
+      await fs.promises.access(this.filePath);
+      this.fileExists = true;
+    } catch {
+      this.fileExists = false;
+    }
+  }
+
+  async beginSession(): Promise<void> {
+    await this.init();
     const now = new Date();
     if (!this.fileExists) {
       const title = path.basename(this.filePath, ".md").replace(/-\d{4}-\d{2}-\d{2}$/, "");
       const header = `# ${title} — ${formatDisplayDate(now)}\n\n`;
-      fs.writeFileSync(this.filePath, header, "utf-8");
+      await fs.promises.writeFile(this.filePath, header, "utf-8");
       this.fileExists = true;
     } else {
-      fs.appendFileSync(this.filePath, "\n---\n\n", "utf-8");
+      await fs.promises.appendFile(this.filePath, "\n---\n\n", "utf-8");
     }
-    fs.appendFileSync(this.filePath, `> ${formatTime(now)} 开始捕获\n\n`, "utf-8");
+    await fs.promises.appendFile(this.filePath, `> ${formatTime(now)} 开始捕获\n\n`, "utf-8");
   }
 
-  writeLines(lines: string[]): void {
+  async writeLines(lines: string[]): Promise<void> {
+    this.writeQueue = this.writeQueue.then(async () => {
+      const now = new Date();
+      const time = formatTime(now);
+      const content = lines.map((line) => `${time} | ${line}`).join("\n") + "\n";
+      await fs.promises.appendFile(this.filePath, content, "utf-8");
+    });
+    return this.writeQueue;
+  }
+
+  async close(): Promise<void> {
+    await this.writeQueue;
     const now = new Date();
-    const time = formatTime(now);
-    const content = lines.map((line) => `${time} | ${line}`).join("\n") + "\n";
-    fs.appendFileSync(this.filePath, content, "utf-8");
+    await fs.promises.appendFile(this.filePath, `\n> ${formatTime(now)} 捕获结束\n\n`, "utf-8");
   }
 
   getFilePath(): string {
